@@ -1,0 +1,86 @@
+# Expense Tracker MCP
+
+An MCP (Model Context Protocol) server that lets an AI model record and query my expenses stored in SQLite, plus a small command-line client that runs a local Llama model through Ollama. No cloud AI or API keys needed.
+
+```
+You ──> client.py ──> Ollama (llama3.2:3b) decides which tool to call
+            │
+            └──(MCP over stdio)──> server.py ──> expense_store.py ──> expenses.db
+```
+
+## Tools
+
+| Tool | Type | What it does |
+|---|---|---|
+| `add_expense` | write | Adds an expense. Validates amount, category and date, and warns if the category budget is 80% used or exceeded |
+| `list_expenses` | read-only | Lists expenses, filtered by month (`YYYY-MM`) and/or category |
+| `total_by_category` | read-only | Spending per category plus grand total |
+| `delete_expense` | destructive | Deletes an expense by id |
+| `set_budget` | write | Sets a monthly limit for a category |
+
+Each tool is marked with MCP tool annotations (read-only / destructive) so a client can ask for confirmation before destructive calls.
+
+## Project structure
+
+```
+expense_store.py   SQLite access + input validation (no MCP code, easy to unit test)
+server.py          MCP server exposing the store as tools (FastMCP)
+client.py          Chat loop: Ollama model + MCP client session
+tests/             pytest tests for the store
+```
+
+## Setup
+
+```bash
+python -m venv venv
+venv\Scripts\activate          # Windows
+# source venv/bin/activate     # Mac/Linux
+pip install -r requirements.txt
+ollama pull llama3.2:3b
+```
+
+## Run
+
+```bash
+pytest                 # run tests
+mcp dev server.py      # try the tools in MCP Inspector (browser, no AI)
+python client.py       # chat with the local model
+```
+
+Example session (exact replies vary by model):
+
+```
+You: I spent 150 on lunch today
+  -> add_expense({'amount': 150, 'category': 'food', 'note': 'lunch'})
+AI: Added ₹150 for food (lunch) today.
+
+You: how much did I spend this month by category?
+  -> total_by_category({'month': '2026-09'})
+AI: Food ₹150. Total ₹150.
+```
+
+## Design notes
+
+- Validation lives in `expense_store.py`, so bad input from the model (negative amounts, `2026-13-45`, unknown categories, future dates) comes back as a clear error message the model can read and fix.
+- All SQL uses parameter placeholders (`?`), so values from the model can't inject SQL. There is a test for this.
+- Months like `2026-9` are normalised to `2026-09`, because the model doesn't always zero-pad.
+- The client stops after 5 tool rounds per message so a confused model can't loop forever.
+
+## Also works with
+
+Any MCP client. For AnythingLLM, add this to `anythingllm_mcp_servers.json` (use your own full paths):
+
+```json
+{
+  "mcpServers": {
+    "expense-tracker": {
+      "command": "C:\\path\\to\\venv\\Scripts\\python.exe",
+      "args": ["C:\\path\\to\\expense-mcp\\server.py"]
+    }
+  }
+}
+```
+
+## References
+
+Server structure (separating logic from the MCP layer, tool annotations, clear validation errors) was inspired by the official [MCP reference servers](https://github.com/modelcontextprotocol/servers).
