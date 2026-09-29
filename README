@@ -80,7 +80,3 @@ Any MCP client. For AnythingLLM, add this to `anythingllm_mcp_servers.json` (use
   }
 }
 ```
-
-## References
-
-Server structure (separating logic from the MCP layer, tool annotations, clear validation errors) was inspired by the official [MCP reference servers](https://github.com/modelcontextprotocol/servers).
